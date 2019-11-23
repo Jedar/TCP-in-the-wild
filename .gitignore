@@ -2,3 +2,6 @@
 /*.log
 /.idea/
 /.vescode/
+/project/server
+/project/client
+/project/build/*

@@ -19,11 +19,11 @@
 #define TRUE 1
 #define FALSE 0
 
-
+/* 这个结构对于滑窗协议并不够用 */
 typedef struct {
 	uint32_t last_seq_received; /* 上一个seq序列 */
 	uint32_t last_ack_received; /* 上一个ack序列 */
-	pthread_mutex_t ack_lock; /* ack的锁（因为ack会加一） */
+	pthread_mutex_t ack_lock; /* ack的锁（因为ack会增加） */
 } window_t;
 
 

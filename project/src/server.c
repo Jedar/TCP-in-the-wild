@@ -41,20 +41,25 @@ int main(int argc, char **argv) {
     char *serverport;
     cmu_socket_t socket;
     
-    serverip = getenv("server15441");
+    /* 默认服务器网址 */
+    serverip = getenv("server15441"); /* getenv：从linux环境变量中读取变量值 */
     if (serverip) ;
     else {
+        /* 为什么是10.0.0.1？ */
         serverip = "10.0.0.1";
     }
 
+    /* 默认服务器监听端口 */
     serverport = getenv("serverport15441");
     if (serverport) ;
     else {
         serverport = "15441";
     }
+    /* 字符串转为整数  */
     portno = (unsigned short)atoi(serverport);
 
 
+    /* 判断端口是否被占用 */
     if(cmu_socket(&socket, TCP_LISTENER, portno, serverip) < 0)
         exit(EXIT_FAILURE);
 

@@ -25,6 +25,7 @@ char* set_headers(uint16_t src, uint16_t dst, uint32_t seq, uint32_t ack,
     uint16_t hlen, uint16_t plen, uint8_t flags, uint16_t adv_window, 
     uint16_t ext, char* ext_data){
 
+    /* 构建包的头部信息 */
 	char* msg;
 	uint16_t temp16;
     uint32_t temp32;
@@ -81,19 +82,18 @@ char* set_headers(uint16_t src, uint16_t dst, uint32_t seq, uint32_t ack,
  *
  */
 char* packet_to_buf(cmu_packet_t* p){
+    /* 拷贝头部信息 */
     char* msg = set_headers(p->header.source_port, p->header.destination_port, 
         p->header.seq_num, p->header.ack_num, p->header.hlen, p->header.plen, 
         p->header.flags, p->header.advertised_window, 
         p->header.extension_length, p->header.extension_data);
-    
+    /* 拷贝扩展信息 */
     if(p->header.extension_length > 0)
         memcpy(msg+(DEFAULT_HEADER_LEN), p->header.extension_data, 
             p->header.extension_length);
-    
+    /* 拷贝数据段 */
     if(p->header.plen > p->header.hlen)
         memcpy(msg+(p->header.hlen), p->data, (p->header.plen - (p->header.hlen)));
-
-
     return msg;
 }
 

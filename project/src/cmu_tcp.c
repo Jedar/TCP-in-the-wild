@@ -16,14 +16,17 @@
 int cmu_socket(cmu_socket_t * dst, int flag, int port, char * serverIP){
   int sockfd, optval;
   socklen_t len;
+  /* socket地址结构  */
   struct sockaddr_in conn, my_addr;
   len = sizeof(my_addr);
 
+  /* UDP socket */
   sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (sockfd < 0){
     perror("ERROR opening socket");
     return EXIT_ERROR;
   }
+  /* 初始化socket参数 */
   dst->their_port = port;
   dst->socket = sockfd;
   dst->received_buf = NULL;
@@ -39,20 +42,21 @@ int cmu_socket(cmu_socket_t * dst, int flag, int port, char * serverIP){
   dst->window.last_seq_received = 0;
   pthread_mutex_init(&(dst->window.ack_lock), NULL);
 
+  /* 创建条件变量 */
   if(pthread_cond_init(&dst->wait_cond, NULL) != 0){
     perror("ERROR condition variable not set\n");
     return EXIT_ERROR;
   }
-
-
+  /* 根据服务器或者客户端创建不同的socket */
   switch(flag){
-    case(TCP_INITATOR):
+    case(TCP_INITATOR):  /* client' socket */
       if(serverIP == NULL){
         perror("ERROR serverIP NULL");
         return EXIT_ERROR;
       }
+      /* socket地址初始化 */
       memset(&conn, 0, sizeof(conn));          
-      conn.sin_family = AF_INET;          
+      conn.sin_family = AF_INET; 
       conn.sin_addr.s_addr = inet_addr(serverIP);  
       conn.sin_port = htons(port); 
       dst->conn = conn;
@@ -60,6 +64,7 @@ int cmu_socket(cmu_socket_t * dst, int flag, int port, char * serverIP){
       my_addr.sin_family = AF_INET;
       my_addr.sin_addr.s_addr = htonl(INADDR_ANY);
       my_addr.sin_port = 0;
+      /* 将套接字地址和套接字描述符 */ 
       if (bind(sockfd, (struct sockaddr *) &my_addr, 
         sizeof(my_addr)) < 0){
         perror("ERROR on binding");
@@ -68,15 +73,19 @@ int cmu_socket(cmu_socket_t * dst, int flag, int port, char * serverIP){
 
       break;
     
-    case(TCP_LISTENER):
+    case(TCP_LISTENER):  /* server's socket */
       bzero((char *) &conn, sizeof(conn));
       conn.sin_family = AF_INET;
+      /* 主机数转换成无符号长整型的网络字节 */
       conn.sin_addr.s_addr = htonl(INADDR_ANY);
+      /* 端口数转换成无符号长整型的网络字节 */
       conn.sin_port = htons((unsigned short)port);
 
       optval = 1;
+      /* setsockopt(套接字,所在的协议层(SOL_SOCKET为套接字层),访问的选项名,包含新选项值的缓冲,现选项的长度) */
       setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, 
            (const void *)&optval , sizeof(int));
+      /* 将套接字地址与套接字描述符绑定 */
       if (bind(sockfd, (struct sockaddr *) &conn, 
         sizeof(conn)) < 0){
           perror("ERROR on binding");
@@ -89,9 +98,12 @@ int cmu_socket(cmu_socket_t * dst, int flag, int port, char * serverIP){
       perror("Unknown Flag");
       return EXIT_ERROR;
   }
+  /* 返回本地地址（因为服务器的case没有初始化my_addr） */
   getsockname(sockfd, (struct sockaddr *) &my_addr, &len);
+  /* ntohs：网络字节顺序转换为主机字节顺序 */
   dst->my_port = ntohs(my_addr.sin_port);
 
+  /* 调用backend.c开始处理后端数据 */
   pthread_create(&(dst->thread_id), NULL, begin_backend, (void *)dst);  
   return EXIT_SUCCESS;
 }
@@ -105,12 +117,13 @@ int cmu_socket(cmu_socket_t * dst, int flag, int port, char * serverIP){
  *
  */
 int cmu_close(cmu_socket_t * sock){
+  /* 连接关闭 */
   while(pthread_mutex_lock(&(sock->death_lock)) != 0);
   sock->dying = TRUE;
   pthread_mutex_unlock(&(sock->death_lock));
-
+  /* 回收线程 */
   pthread_join(sock->thread_id, NULL); 
-
+  /* 释放缓冲区 */
   if(sock != NULL){
     if(sock->received_buf != NULL)
       free(sock->received_buf);
@@ -121,6 +134,7 @@ int cmu_close(cmu_socket_t * sock){
     perror("ERORR Null scoket\n");
     return EXIT_ERROR;
   }
+  /* 关闭UDP socket */
   return close(sock->socket);
 }
 
@@ -145,31 +159,32 @@ int cmu_read(cmu_socket_t * sock, char* dst, int length, int flags){
     perror("ERROR negative length");
     return EXIT_ERROR;
   }
-
+  /* 等待接收缓冲区到可用状态 */
   while(pthread_mutex_lock(&(sock->recv_lock)) != 0);
-
+  /* 根据读操作是否需要等待执行不同读操作 */
   switch(flags){
-    case NO_FLAG:
+    case NO_FLAG:  /* 需要等待，注意没有break */
       while(sock->received_len == 0){
         pthread_cond_wait(&(sock->wait_cond), &(sock->recv_lock)); 
       }
-    case NO_WAIT:
-      if(sock->received_len > 0){
-        if(sock->received_len > length)
-          read_len = length;
+    case NO_WAIT:   /* 不需要等待 */
+      if(sock->received_len > 0){  /* 如果缓冲区里有数据 */
+        if(sock->received_len > length) /* 如果缓冲区足够大 */
+          read_len = length;  /* 那么读取的就是需要的长度 */
         else
-          read_len = sock->received_len;
-
+          read_len = sock->received_len;  /* 如果缓冲区不够大，则只返回缓冲区大小的数据 */
+        /* copy数据 */
         memcpy(dst, sock->received_buf, read_len);
-        if(read_len < sock->received_len){
+        if(read_len < sock->received_len){  /* 如果没有把所有的数据读取出来 */
            new_buf = malloc(sock->received_len - read_len);
+           /* 把剩余数据储存下来，替换之前的数据 */
            memcpy(new_buf, sock->received_buf + read_len, 
-            sock->received_len - read_len);
+                sock->received_len - read_len);
            free(sock->received_buf);
            sock->received_len -= read_len;
            sock->received_buf = new_buf;
         }
-        else{
+        else{  /* 如果全部数据读出来了，则释放缓冲区 */
           free(sock->received_buf);
           sock->received_buf = NULL;
           sock->received_len = 0;
@@ -181,6 +196,7 @@ int cmu_read(cmu_socket_t * sock, char* dst, int length, int flags){
       read_len = EXIT_ERROR;
   }
   pthread_mutex_unlock(&(sock->recv_lock));
+  /* 返回读取长度 */
   return read_len;
 }
 
@@ -197,10 +213,12 @@ int cmu_read(cmu_socket_t * sock, char* dst, int length, int flags){
  */
 int cmu_write(cmu_socket_t * sock, char* src, int length){
   while(pthread_mutex_lock(&(sock->send_lock)) != 0);
+  /* 如果发送缓冲区不存在或者太小，将缓冲区变得足够大 */
   if(sock->sending_buf == NULL)
     sock->sending_buf = malloc(length);
   else
     sock->sending_buf = realloc(sock->sending_buf, length + sock->sending_len);
+  /* 将需要发送的数据储存进缓冲区 */
   memcpy(sock->sending_buf + sock->sending_len, src, length);
   sock->sending_len += length;
 

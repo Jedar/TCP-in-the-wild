@@ -8,7 +8,7 @@ $INSTALL_BASE = <<SCRIPT
   sudo apt-get update
   sudo apt-get install python2.7
   sudo apt-get install -y python-pip
-  sudo apt-get install -y git gdb valgrind python-dev libffi-dev libssl-dev
+  sudo apt-get install -y git gdb valgrind python-dev libffi-dev libssl-dev 
   sudo DEBIAN_FRONTEND=noninteractive apt-get -y install tshark
   sudo pip install tcconfig
   sudo pip install scapy

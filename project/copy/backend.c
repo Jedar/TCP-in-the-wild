@@ -1,10 +1,4 @@
 #include "backend.h"
-#include "window.h"
-
-
-int TCP_handshake(cmu_socket_t *socket);
-void TCP_GBN_send(cmu_socket_t * sock, char* data, int buf_len);
-
 
 /*
  * Param: sock - The socket to check for acknowledgements. 
@@ -195,79 +189,51 @@ void single_send(cmu_socket_t * sock, char* data, int buf_len){
  */
 void* begin_backend(void * in){
 	cmu_socket_t * dst = (cmu_socket_t *) in;
-	int death, buf_len;
+	int death, buf_len, send_signal;
 	char* data;
 
 	/* TODO: TCP hand shake here */
-	TCP_handshake(dst);
 
-	int err = slide_window_init(&(dst->window),0,0,2,2);
+	while(TRUE){
+		while(pthread_mutex_lock(&(dst->death_lock)) !=  0);
+		death = dst->dying;
+		pthread_mutex_unlock(&(dst->death_lock));
+		
+		while(pthread_mutex_lock(&(dst->send_lock)) != 0);
+		buf_len = dst->sending_len;
 
-	if(err != EXIT_SUCCESS){
-		fprintf(stderr,"slide window init falied\n");
-	}
-	else{
-		printf("slide init success\n");
-	}
-	if(dst->type == 2){
-		while(TRUE){
-			while(pthread_mutex_lock(&(dst->death_lock)) !=  0);
-			death = dst->dying;
-			pthread_mutex_unlock(&(dst->death_lock));
-			
-			while(pthread_mutex_lock(&(dst->send_lock)) != 0);
-			buf_len = dst->sending_len;
+		if(death && buf_len == 0)
+			break;
 
-			if(death && buf_len == 0)
-				break;
+		if(buf_len > 0){
+			data = malloc(buf_len);
+			memcpy(data, dst->sending_buf, buf_len);
+			dst->sending_len = 0;
+			free(dst->sending_buf);
+			dst->sending_buf = NULL;
+			pthread_mutex_unlock(&(dst->send_lock));
+			single_send(dst, data, buf_len);
+			free(data);
+		}
+		else
+			pthread_mutex_unlock(&(dst->send_lock));
 
-			if(buf_len > 0){
-				data = malloc(buf_len);
-				memcpy(data, dst->sending_buf, buf_len);
-				dst->sending_len = 0;
-				free(dst->sending_buf);
-				dst->sending_buf = NULL;
-				pthread_mutex_unlock(&(dst->send_lock));
-				slide_window_send(&dst->window,dst,data,buf_len);
-				free(data);
-			}
-			else
-				pthread_mutex_unlock(&(dst->send_lock));
+		/* 检查recv数据 */
+		check_for_data(dst, NO_WAIT);
+		
+		while(pthread_mutex_lock(&(dst->recv_lock)) != 0);
+		
+		if(dst->received_len > 0)
+			send_signal = TRUE;
+		else
+			send_signal = FALSE;
+		pthread_mutex_unlock(&(dst->recv_lock));
+		
+		if(send_signal){
+			/* 如果收到数据，那么通知cmu_read可以读取数据，解除read的堵塞 */
+			pthread_cond_signal(&(dst->wait_cond));  
 		}
 	}
-	else{
-		uint8_t send_signal;
-		while(TRUE){
-			while(pthread_mutex_lock(&(dst->death_lock)) !=  0);
-			death = dst->dying;
-			pthread_mutex_unlock(&(dst->death_lock));
-			
-			while(pthread_mutex_lock(&(dst->send_lock)) != 0);
-			buf_len = dst->sending_len;
-
-			if(death && buf_len == 0)
-				break;
-
-			if(buf_len > 0){
-				data = malloc(buf_len);
-				memcpy(data, dst->sending_buf, buf_len);
-				dst->sending_len = 0;
-				free(dst->sending_buf);
-				dst->sending_buf = NULL;
-				pthread_mutex_unlock(&(dst->send_lock));
-				// single_send(dst, data, buf_len);
-				slide_window_send(&dst->window,dst,data,buf_len);
-				free(data);
-			}
-			else
-				pthread_mutex_unlock(&(dst->send_lock));
-
-			/* 检查recv数据 */
-			// check_for_data(dst, NO_WAIT);
-			slide_window_check_for_data(&dst->window,dst,NO_WAIT);
-		}
-	}
-	slide_window_close(&(dst->window));
 	pthread_exit(NULL); 
 	return NULL; 
 }
@@ -279,7 +245,6 @@ int TCP_handshake(cmu_socket_t *socket){
 	/* 而是直接发送RTS报文段，进入CLOSED状态。*/
 	/* 这样做的目的是为了防止SYN洪泛攻击。 */
 	/* socket的type确定了发送者和接收者 */
-	return 0;
 }
 
 /* 滑动窗口发送数据，使用GBN的策略，替代原来的single_send函数 */

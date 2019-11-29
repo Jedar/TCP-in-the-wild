@@ -14,6 +14,7 @@
 #include "global.h"
 #include "grading.h"
 
+
 typedef struct {
 	uint32_t identifier;   		//4 bytes
 	uint16_t source_port;		//2 bytes
@@ -69,6 +70,8 @@ uint8_t get_flags(char* msg);
 uint16_t get_advertised_window(char* msg);
 uint16_t get_extension_length(char* msg);
 
+void set_seq(char *pkt, uint32_t val);
+void set_ack(char *pkt, uint32_t val);
 
 
 #endif

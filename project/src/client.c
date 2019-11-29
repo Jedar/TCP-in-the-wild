@@ -11,16 +11,25 @@ void functionality(cmu_socket_t  * sock){
     char buf[9898];
     int read;
     FILE *fp;
+    char *msg;
 
-    cmu_write(sock, "hi there", 9);
-    cmu_write(sock, "hi there2", 10);
-    cmu_write(sock, "hi there3", 10);
-    cmu_write(sock, "hi there4", 10);
-    cmu_write(sock, "hi there5", 10);
-    cmu_write(sock, "hi there6", 10);
+    msg = "client: hi there 1";
+    cmu_write(sock, msg, strlen(msg));
+    msg = "client: hi there 2";
+    cmu_write(sock, msg, strlen(msg));
+    msg = "client: hi there 3";
+    cmu_write(sock, msg, strlen(msg));
+    msg = "client: hi there 4";
+    cmu_write(sock, msg, strlen(msg));
+    msg = "client: hi there 5";
+    cmu_write(sock, msg, strlen(msg));
+    msg = "client: hi there 6";
+    cmu_write(sock, msg, strlen(msg));
     cmu_read(sock, buf, 200, NO_FLAG);
 
-    cmu_write(sock, "hi there", 9);
+    msg = "client: hi there 7";
+    cmu_write(sock, msg, strlen(msg));
+    // cmu_write(sock, "hi there", 9);
     cmu_read(sock, buf, 200, NO_FLAG);
     printf("R: %s\n", buf);
 

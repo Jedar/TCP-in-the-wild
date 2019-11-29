@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "time.h": "c",
+        "window.h": "c",
+        "signal.h": "c",
+        "types.h": "c",
+        "int-ll64.h": "c",
+        "bitsperlong.h": "c"
+    }
+}

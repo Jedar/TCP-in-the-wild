@@ -65,8 +65,9 @@ char* set_headers(uint16_t src, uint16_t dst, uint32_t seq, uint32_t ack,
     index += SIZE16;
 
 
-    if(ext > 0)
+    if(ext > 0){
         memcpy(msg+index, ext_data, ext);
+    }
     
 
 	return msg;
@@ -242,6 +243,12 @@ uint32_t get_seq(char* msg){
     return ntohl(var);
 }
 
+void set_seq(char *pkt, uint32_t val){
+    int offset = 8;
+    uint32_t temp32 = htonl(val);
+    memcpy(pkt+offset, &temp32, SIZE32);
+}
+
 /*
  * Param: msg - buffer representation of a packet
  *
@@ -255,6 +262,12 @@ uint32_t get_ack(char* msg){
     uint32_t var;
     memcpy(&var, msg+offset, SIZE32);
     return ntohl(var);
+}
+
+void set_ack(char *pkt, uint32_t val){
+    int offset = 12;
+    uint32_t temp32 = htonl(val);
+    memcpy(pkt+offset, &temp32, SIZE32);
 }
 
 /*

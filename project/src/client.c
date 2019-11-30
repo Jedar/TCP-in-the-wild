@@ -15,6 +15,7 @@ void functionality(cmu_socket_t  * sock){
 
     msg = "client: hi there 1";
     cmu_write(sock, msg, strlen(msg));
+    sleep(1);
     msg = "client: hi there 2";
     cmu_write(sock, msg, strlen(msg));
     msg = "client: hi there 3";
@@ -43,7 +44,8 @@ void functionality(cmu_socket_t  * sock){
         if(read > 0)
             cmu_write(sock, buf, read);
     }
-    
+    msg = "";
+    cmu_write(sock, msg, strlen(msg));
 }
 
 /*

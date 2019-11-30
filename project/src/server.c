@@ -18,16 +18,20 @@ void functionality(cmu_socket_t  * sock){
     printf("N: %d\n", n);
     msg = "server: hi there 1";
     cmu_write(sock, msg, strlen(msg));
+
+    sleep(1);
     cmu_read(sock, buf, 200, NO_FLAG);
     msg = "server: hi there 2";
     cmu_write(sock, msg, strlen(msg));
 
     sleep(5);
-    n = cmu_read(sock, buf, 9898, NO_FLAG);
-    printf("N: %d\n", n);
     fp = fopen("./test/file.c", "w+");
-    fwrite(buf, 1, n, fp);
-
+    while(n = cmu_read(sock, buf, 9898, NO_FLAG)){
+        printf("N: %d\n", n);
+        fwrite(buf, 1, n, fp);
+        fflush(fp);
+    }
+    fclose(fp);
 }
 
 

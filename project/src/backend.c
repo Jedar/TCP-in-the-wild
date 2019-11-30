@@ -209,63 +209,34 @@ void* begin_backend(void * in){
 	else{
 		printf("slide init success\n");
 	}
-	if(dst->type == 2){
-		while(TRUE){
-			while(pthread_mutex_lock(&(dst->death_lock)) !=  0);
-			death = dst->dying;
-			pthread_mutex_unlock(&(dst->death_lock));
-			
-			while(pthread_mutex_lock(&(dst->send_lock)) != 0);
-			buf_len = dst->sending_len;
+	while(TRUE){
+		while(pthread_mutex_lock(&(dst->death_lock)) !=  0);
+		death = dst->dying;
+		pthread_mutex_unlock(&(dst->death_lock));
+		
+		while(pthread_mutex_lock(&(dst->send_lock)) != 0);
+		buf_len = dst->sending_len;
 
-			if(death && buf_len == 0)
-				break;
+		if(death && buf_len == 0)
+			break;
 
-			if(buf_len > 0){
-				data = malloc(buf_len);
-				memcpy(data, dst->sending_buf, buf_len);
-				dst->sending_len = 0;
-				free(dst->sending_buf);
-				dst->sending_buf = NULL;
-				pthread_mutex_unlock(&(dst->send_lock));
-				slide_window_send(&dst->window,dst,data,buf_len);
-				free(data);
-			}
-			else
-				pthread_mutex_unlock(&(dst->send_lock));
+		if(buf_len > 0){
+			data = malloc(buf_len);
+			memcpy(data, dst->sending_buf, buf_len);
+			dst->sending_len = 0;
+			free(dst->sending_buf);
+			dst->sending_buf = NULL;
+			pthread_mutex_unlock(&(dst->send_lock));
+			// single_send(dst, data, buf_len);
+			slide_window_send(&dst->window,dst,data,buf_len);
+			free(data);
 		}
-	}
-	else{
-		uint8_t send_signal;
-		while(TRUE){
-			while(pthread_mutex_lock(&(dst->death_lock)) !=  0);
-			death = dst->dying;
-			pthread_mutex_unlock(&(dst->death_lock));
-			
-			while(pthread_mutex_lock(&(dst->send_lock)) != 0);
-			buf_len = dst->sending_len;
+		else
+			pthread_mutex_unlock(&(dst->send_lock));
 
-			if(death && buf_len == 0)
-				break;
-
-			if(buf_len > 0){
-				data = malloc(buf_len);
-				memcpy(data, dst->sending_buf, buf_len);
-				dst->sending_len = 0;
-				free(dst->sending_buf);
-				dst->sending_buf = NULL;
-				pthread_mutex_unlock(&(dst->send_lock));
-				// single_send(dst, data, buf_len);
-				slide_window_send(&dst->window,dst,data,buf_len);
-				free(data);
-			}
-			else
-				pthread_mutex_unlock(&(dst->send_lock));
-
-			/* 检查recv数据 */
-			// check_for_data(dst, NO_WAIT);
-			slide_window_check_for_data(&dst->window,dst,NO_WAIT);
-		}
+		/* 检查recv数据 */
+		// check_for_data(dst, NO_WAIT);
+		slide_window_check_for_data(&dst->window,dst,NO_WAIT);
 	}
 	slide_window_close(&(dst->window));
 	pthread_exit(NULL); 

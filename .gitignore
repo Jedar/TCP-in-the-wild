@@ -1,7 +1,7 @@
 /.vagrant/
 /*.log
 /.idea/
-/.vescode/
+/.vscode/
 /project/server
 /project/client
 /project/build/*

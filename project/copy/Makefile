@@ -8,8 +8,7 @@ CC=gcc
 FLAGS = -pthread -g -ggdb -Wall -DDEBUG -I$(INC_DIR)
 OBJS = $(BUILD_DIR)/cmu_packet.o \
 	$(BUILD_DIR)/cmu_tcp.o \
-	$(BUILD_DIR)/backend.o \
-	$(BUILD_DIR)/window.o
+	$(BUILD_DIR)/backend.o
 
 default:all
 all: server client

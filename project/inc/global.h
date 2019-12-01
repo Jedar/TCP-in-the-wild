@@ -1,6 +1,13 @@
-#include <pthread.h> /* pthread struct */ 
+#include <pthread.h> /* pthread struct */
+#include <stdint.h> 
+#include <semaphore.h>
+#include <signal.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <time.h>
 /* above add by YuJitao */
 #include "grading.h"
+
 #ifndef _GLOBAL_H_
 #define _GLOBAL_H_
 
@@ -19,13 +26,63 @@
 #define TRUE 1
 #define FALSE 0
 
+/* 发送者的状态 */
+typedef enum {
+	SS_DEFAULT = 1,   /* 默认状态 */
+	SS_TIME_OUT = 2,   /* 超时事件 */
+	SS_RESEND = 3,   /* 重发事件 */
+	SS_SEND_OVER = 4,  /* 当前数据发送完毕 */
+	SS_WAIT_ACK = 6  /* 窗口满了，需要等待ACK */
+} send_state;
+
+/* 滑窗的下标 */
+typedef uint32_t SWPSeq;  /* slide window protocol序列号 */
+
+/* 滑窗发送窗口单位 */
+typedef struct {
+	uint8_t used;  /* slot是否还在使用，0标识没有使用，1标识正在使用 */
+	struct timespec time_send;
+	char *msg;  /* 已经打包好的packet */
+} sendQ_slot;
+
+/* 滑窗接收窗口单位 */
+typedef struct {
+	uint8_t recv_or_not;
+	char *msg;
+} recvQ_slot;
+
+/* 定义滑窗协议的窗口结构 */
+typedef struct {
+	uint32_t last_seq_received; /* 上一个seq序列 */
+	uint32_t last_ack_received; /* 上一个ack序列 */
+	uint16_t adv_window; /* 上次收到包的建议数据大小 */
+	uint16_t my_adv_window; /* 本方的建议数据大小（每次checkdata时更新） */
+	pthread_mutex_t ack_lock; /* ack的锁（因为ack会增加） */
+    size_t SWS; /* send_window_size窗口大小 */
+	size_t RWS; /* recv_window_size窗口大小 */
+	sem_t sendlock;  /* 用信号量控制窗口大小，如果窗口满了会堵塞 */
+	send_state stat;  /* 发送方所处的状态 */
+	SWPSeq LAR; /* last ack recv */ /* |----------LAR+++++++++LFS--------| */
+	SWPSeq LFS; /* last frame send */
+	sendQ_slot *send_buffer;
+	uint32_t seq_expect;  /* 接收下一个包的seq序列 */
+	SWPSeq EXP;  /* expect packet, 接收缓冲区的起点 */  /* ------------EXP+-+-+-++-------- */
+	recvQ_slot *recv_buffer;
+    uint32_t dup_ack_num; /* 当前收到ack的数量 */
+	pthread_t recv_thread;  /* 接收数据的线程 */
+	uint8_t timer_flag;  /* 滑窗的计时器是否设置 */
+	/* 一下数据结构用于计算超时重传间隔 */
+	struct timeval TimeoutInterval;  /* 超时时间 */
+	struct timeval EstimatedRTT;  /* （加权）平均RTT时间 */
+	struct timeval DevRTT;  /* RTT偏差时间 */
+} slide_window_t;
+
 /* 这个结构对于滑窗协议并不够用 */
 typedef struct {
 	uint32_t last_seq_received; /* 上一个seq序列 */
 	uint32_t last_ack_received; /* 上一个ack序列 */
 	pthread_mutex_t ack_lock; /* ack的锁（因为ack会增加） */
 } window_t;
-
 
 typedef struct {
 	int socket; /* socket端口号 */
@@ -43,7 +100,8 @@ typedef struct {
 	pthread_mutex_t send_lock; /* 发送缓冲的锁 */
 	int dying; /* 连接是否关闭，默认为false */
 	pthread_mutex_t death_lock;
-	window_t window; /* 滑窗 */
+	slide_window_t window;  /* 滑窗 */
+	// window_t window; 
 } cmu_socket_t;
 
 #endif

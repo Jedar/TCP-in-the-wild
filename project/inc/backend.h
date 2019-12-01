@@ -3,6 +3,7 @@
 #include "cmu_tcp.h"
 #include "global.h"
 #include "cmu_packet.h"
+#include "window.h"
 
 int check_ack(cmu_socket_t * dst, uint32_t seq);
 char * check_for_data(cmu_socket_t * dst, int flags);

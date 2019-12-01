@@ -49,7 +49,7 @@ int cmu_socket(cmu_socket_t * dst, int flag, int port, char * serverIP){
   }
   /* 根据服务器或者客户端创建不同的socket */
   switch(flag){
-    case(TCP_INITATOR):  /* client' socket */
+    case(TCP_INITATOR):  /* server' socket */
       if(serverIP == NULL){
         perror("ERROR serverIP NULL");
         return EXIT_ERROR;
@@ -73,7 +73,7 @@ int cmu_socket(cmu_socket_t * dst, int flag, int port, char * serverIP){
 
       break;
     
-    case(TCP_LISTENER):  /* server's socket */
+    case(TCP_LISTENER):  /* client's socket */
       bzero((char *) &conn, sizeof(conn));
       conn.sin_family = AF_INET;
       /* 主机数转换成无符号长整型的网络字节 */
@@ -165,6 +165,7 @@ int cmu_read(cmu_socket_t * sock, char* dst, int length, int flags){
   switch(flags){
     case NO_FLAG:  /* 需要等待，注意没有break */
       while(sock->received_len == 0){
+        /* 如果没有收到数据，释放锁，等待socket收到数据后继续加锁，这里会堵塞 */
         pthread_cond_wait(&(sock->wait_cond), &(sock->recv_lock)); 
       }
     case NO_WAIT:   /* 不需要等待 */
@@ -185,9 +186,9 @@ int cmu_read(cmu_socket_t * sock, char* dst, int length, int flags){
            sock->received_buf = new_buf;
         }
         else{  /* 如果全部数据读出来了，则释放缓冲区 */
-          free(sock->received_buf);
-          sock->received_buf = NULL;
-          sock->received_len = 0;
+          free(sock->received_buf); 
+          sock->received_buf = NULL; 
+          sock->received_len = 0; 
         }
       }
       break;

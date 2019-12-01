@@ -5,7 +5,7 @@
 #include "cmu_packet.h"
 
 int check_ack(cmu_socket_t * dst, uint32_t seq);
-void check_for_data(cmu_socket_t * dst, int flags);
+char * check_for_data(cmu_socket_t * dst, int flags);
 void * begin_backend(void * in);
-
+int TCP_handshake(cmu_socket_t *sock);
 #endif

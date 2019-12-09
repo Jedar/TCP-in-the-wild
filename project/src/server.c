@@ -9,7 +9,7 @@
  */
 void functionality(cmu_socket_t  * sock){
     char buf[9898];
-    FILE *fp;
+    // FILE *fp;
     int n;
     char *msg;
 
@@ -25,13 +25,13 @@ void functionality(cmu_socket_t  * sock){
     cmu_write(sock, msg, strlen(msg));
 
     sleep(5);
-    fp = fopen("./test/file.c", "w+");
-    while(n = cmu_read(sock, buf, 9898, NO_FLAG)){
-        printf("N: %d\n", n);
-        fwrite(buf, 1, n, fp);
-        fflush(fp);
-    }
-    fclose(fp);
+    // fp = fopen("./test/file.c", "w+");
+    // while(n = cmu_read(sock, buf, 9898, NO_FLAG)){
+    //     printf("N: %d\n", n);
+    //     fwrite(buf, 1, n, fp);
+    //     fflush(fp);
+    // }
+    // fclose(fp);
 }
 
 

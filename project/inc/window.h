@@ -4,15 +4,17 @@
 
 /* 初始化一个滑窗 */
 int slide_window_init(slide_window_t *win,  
-					uint32_t last_seq_received,  /* 如果不知道，可以设置为0 */
-					uint32_t last_ack_received,  /* 可以初始化为0 */
+					cmu_socket_t *sock, 
 					size_t sz,size_t rcsz);
 
 /* 发送数据 */
-void slide_window_send(slide_window_t *win, cmu_socket_t *sock, char *data, int len);
+void slide_window_send(slide_window_t *win, cmu_socket_t *sock);
 
 /* 收到数据 */
 void slide_window_check_for_data(slide_window_t * win, cmu_socket_t *sock, int flags);
+
+/* 滑动窗口激活 */
+void slide_window_activate(slide_window_t *win, cmu_socket_t *sock);
 
 void set_timer(int sec, int usec, void (*handler)(int));
 

@@ -1,4 +1,122 @@
 #include "cmu_tcp.h"
+#include <time.h> 
+
+#define MAXSEQ 30
+/* 暂定成功返回0，失败返回1，注意对发送者和接收者应该有不同的处理 */
+int TCP_handshake_client(cmu_socket_t *sock){
+  srand((unsigned)time(NULL));
+  char *packet;
+  char *header;
+  uint32_t seq, ack;
+  switch (sock->state){
+  case TCP_CLOSED:{  /* first time */
+      seq = 0;//rand() % MAXSEQ;
+			/* client 发送SYN */
+			packet = create_packet_buf(sock->my_port, sock->their_port,
+            seq,0, DEFAULT_HEADER_LEN, DEFAULT_HEADER_LEN, SYN_FLAG_MASK,
+            /*TODO*/0, 0, NULL, NULL, 0);
+			sendto(sock->socket, packet, DEFAULT_HEADER_LEN, 0, 
+          (struct sockaddr*) &(sock->conn), sizeof(sock->conn));
+      free(packet);
+      sock->state = TCP_SYN_SEND;
+      sock->window.last_ack_received = seq;
+      sock->window.last_seq_received = 0;
+      break;
+    }
+  case TCP_SYN_SEND:{ /* after send */
+      header= check_for_data(sock, TIMEOUT);
+			if ((get_flags(header)) == (SYN_FLAG_MASK|ACK_FLAG_MASK)) {
+				ack = get_seq(header) + 1;
+        seq = get_ack(header);
+				packet = create_packet_buf(sock->my_port, sock->their_port,seq,
+					ack, DEFAULT_HEADER_LEN, DEFAULT_HEADER_LEN,ACK_FLAG_MASK/* 返回ACK */,
+					/*TODO*/0, 0, NULL, NULL, 0);
+				sendto(sock->socket, packet, DEFAULT_HEADER_LEN, 0, 
+            (struct sockaddr*) &(sock->conn), sizeof(sock->conn));
+        free(packet);
+				sock->state = TCP_ESTABLISHED;
+        sock->window.last_ack_received = ack;
+        sock->window.last_seq_received = seq;
+			}
+      else{
+        sock->state = TCP_CLOSED;
+      }
+      free(header);
+      break;
+    }
+  default:
+    break;
+  }
+  return sock->state;
+}
+
+int TCP_handshake_server(cmu_socket_t *sock){
+  srand((unsigned)time(NULL));
+  char *packet;
+  char *header;
+  switch (sock->state){
+  case TCP_CLOSED:
+      sock->state = TCP_LISTEN;
+      break;
+  case TCP_LISTEN:{  /* first time */
+      uint32_t seq;
+			/* server堵塞直到有SYN到达 */
+			header= check_for_data(sock, NO_FLAG);
+			if ((get_flags(header)&SYN_FLAG_MASK) == SYN_FLAG_MASK) {
+				seq = get_seq(header);
+				uint32_t ack = seq + 1;
+				seq = 0;//rand() % MAXSEQ;
+        /* 这里修改为了SYN而不是SYN|ACK */
+				packet = create_packet_buf(sock->my_port, sock->their_port, seq,
+					  ack, DEFAULT_HEADER_LEN, DEFAULT_HEADER_LEN, (SYN_FLAG_MASK|ACK_FLAG_MASK),
+					/*TODO*/0, 0, NULL, NULL, 0);
+				sendto(sock->socket, packet, DEFAULT_HEADER_LEN, 0, 
+            (struct sockaddr*) &(sock->conn), sizeof(sock->conn));
+        free(packet);
+        sock->state = TCP_SYN_RCVD;
+        sock->window.last_ack_received = ack;
+        sock->window.last_seq_received = seq;
+			}
+      free(header);
+      break;
+    }
+  case TCP_SYN_RCVD:{ /* after recv */
+      header= check_for_data(sock, TIMEOUT);
+      int flag = ((get_flags(header) & ACK_FLAG_MASK) == ACK_FLAG_MASK);
+      uint32_t ack = get_seq(header);
+      uint32_t seq = get_ack(header);
+      if(flag && ack == sock->window.last_ack_received && seq == sock->window.last_seq_received+1){
+        sock->state = TCP_ESTABLISHED;
+        sock->window.last_ack_received = ack;
+        sock->window.last_seq_received = seq;
+      }
+      else{
+        sock->state = TCP_LISTEN;
+      }
+      free(header);
+    }
+  default:
+    break;
+  }
+  return sock->state;
+}
+
+int TCP_handshake(cmu_socket_t *sock){
+	while(sock->state != TCP_ESTABLISHED){
+    switch (sock->type)
+    {
+    case TCP_INITATOR:
+      TCP_handshake_client(sock);
+      break;
+    case TCP_LISTENER:
+      TCP_handshake_server(sock);
+      break;
+    default:
+      break;
+    }
+  }
+	return 0;
+}
 
 /*
  * Param: dst - The structure where socket information will be stored
@@ -40,7 +158,7 @@ int cmu_socket(cmu_socket_t * dst, int flag, int port, char * serverIP){
   pthread_mutex_init(&(dst->death_lock), NULL);
   dst->window.last_ack_received = 0;
   dst->window.last_seq_received = 0;
-  pthread_mutex_init(&(dst->window.ack_lock), NULL);
+  dst->state = TCP_CLOSED;
 
   /* 创建条件变量 */
   if(pthread_cond_init(&dst->wait_cond, NULL) != 0){
@@ -103,6 +221,14 @@ int cmu_socket(cmu_socket_t * dst, int flag, int port, char * serverIP){
   /* ntohs：网络字节顺序转换为主机字节顺序 */
   dst->my_port = ntohs(my_addr.sin_port);
 
+  /* 握手 */
+  TCP_handshake(dst);
+  /* 握手失败 */
+  if(dst->state != TCP_ESTABLISHED){
+    fprintf(stderr,"TCP handshake failed\n");
+    return EXIT_FAILURE;
+  }
+
   /* 调用backend.c开始处理后端数据 */
   pthread_create(&(dst->thread_id), NULL, begin_backend, (void *)dst);  
   return EXIT_SUCCESS;
@@ -117,8 +243,19 @@ int cmu_socket(cmu_socket_t * dst, int flag, int port, char * serverIP){
  *
  */
 int cmu_close(cmu_socket_t * sock){
+  /* 发送FIN包 */
+  char *packet = create_packet_buf(sock->my_port, sock->their_port, 
+            sock->window.last_ack_received,
+					  sock->window.last_seq_received, 
+            DEFAULT_HEADER_LEN, DEFAULT_HEADER_LEN, SYN_FLAG_MASK,
+					/*TODO*/0, 0, NULL, NULL, 0);
+	sendto(sock->socket, packet, DEFAULT_HEADER_LEN, 0, 
+            (struct sockaddr*) &(sock->conn), sizeof(sock->conn));
+  free(packet);
   /* 连接关闭 */
   while(pthread_mutex_lock(&(sock->death_lock)) != 0);
+  /* 进入等待结束一阶段 */
+  sock->state = TCP_FIN_WAIT1;
   sock->dying = TRUE;
   pthread_mutex_unlock(&(sock->death_lock));
   /* 回收线程 */

@@ -26,6 +26,24 @@
 #define TRUE 1
 #define FALSE 0
 
+#define MAX_BUFFER_SIZE (1<<15)
+
+#define MAX_SEQ_NUM (1<<31)
+
+typedef enum {
+	TCP_CLOSED = 1,
+	TCP_LISTEN = 2,
+	TCP_SYN_RCVD = 3,
+	TCP_SYN_SEND = 4,
+	TCP_ESTABLISHED = 5,
+	TCP_FIN_WAIT1 = 6,
+	TCP_FIN_WAIT2 = 7, 
+	TCP_CLOSING = 8,
+	TCP_TIME_WAIT = 9,
+	TCP_CLOSE_WAIT = 10,
+	TCP_LAST_ACK = 11
+} TCP_State;
+
 /* 发送者的状态 */
 typedef enum {
 	SS_DEFAULT = 1,   /* 默认状态 */
@@ -38,17 +56,11 @@ typedef enum {
 /* 滑窗的下标 */
 typedef uint32_t SWPSeq;  /* slide window protocol序列号 */
 
-/* 滑窗发送窗口单位 */
-typedef struct {
-	uint8_t used;  /* slot是否还在使用，0标识没有使用，1标识正在使用 */
-	struct timespec time_send;
-	char *msg;  /* 已经打包好的packet */
-} sendQ_slot;
-
 /* 滑窗接收窗口单位 */
-typedef struct {
+typedef struct RecvQ_slot {
 	uint8_t recv_or_not;
 	char *msg;
+	struct RecvQ_slot *next; /* 组织成链表的形式 */
 } recvQ_slot;
 
 /* 定义滑窗协议的窗口结构 */
@@ -57,21 +69,19 @@ typedef struct {
 	uint32_t last_ack_received; /* 上一个ack序列 */
 	uint16_t adv_window; /* 上次收到包的建议数据大小 */
 	uint16_t my_adv_window; /* 本方的建议数据大小（每次checkdata时更新） */
-	pthread_mutex_t ack_lock; /* ack的锁（因为ack会增加） */
     size_t SWS; /* send_window_size窗口大小 */
 	size_t RWS; /* recv_window_size窗口大小 */
-	sem_t sendlock;  /* 用信号量控制窗口大小，如果窗口满了会堵塞 */
 	send_state stat;  /* 发送方所处的状态 */
 	SWPSeq LAR; /* last ack recv */ /* |----------LAR+++++++++LFS--------| */
-	SWPSeq LFS; /* last frame send */
-	sendQ_slot *send_buffer;
+	SWPSeq LFS; /* last byte send */
+	SWPSeq DAT; /* 数据的最大下标 */
+	char send_buffer[MAX_BUFFER_SIZE];  /* 发送者缓冲 */
 	uint32_t seq_expect;  /* 接收下一个包的seq序列 */
-	SWPSeq EXP;  /* expect packet, 接收缓冲区的起点 */  /* ------------EXP+-+-+-++-------- */
-	recvQ_slot *recv_buffer;
+	recvQ_slot recv_buffer_header;  /* 缓存已收到的数据 */
     uint32_t dup_ack_num; /* 当前收到ack的数量 */
-	pthread_t recv_thread;  /* 接收数据的线程 */
 	uint8_t timer_flag;  /* 滑窗的计时器是否设置 */
 	/* 一下数据结构用于计算超时重传间隔 */
+	struct timeval time_send;  /* 发送包的时间 */
 	struct timeval TimeoutInterval;  /* 超时时间 */
 	struct timeval EstimatedRTT;  /* （加权）平均RTT时间 */
 	struct timeval DevRTT;  /* RTT偏差时间 */
@@ -101,6 +111,7 @@ typedef struct {
 	int dying; /* 连接是否关闭，默认为false */
 	pthread_mutex_t death_lock;
 	slide_window_t window;  /* 滑窗 */
+	TCP_State state;
 	// window_t window; 
 } cmu_socket_t;
 

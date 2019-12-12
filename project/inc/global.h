@@ -5,6 +5,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <stdio.h>
 /* above add by YuJitao */
 #include "grading.h"
 
@@ -29,6 +30,8 @@
 #define MAX_BUFFER_SIZE (1<<15)
 
 #define MAX_SEQ_NUM (1<<31)
+
+#define MAX_RECV_SIZE 10000
 
 typedef enum {
 	TCP_CLOSED = 1,
@@ -67,8 +70,8 @@ typedef struct RecvQ_slot {
 typedef struct {
 	uint32_t last_seq_received; /* 上一个seq序列 */
 	uint32_t last_ack_received; /* 上一个ack序列 */
-	uint16_t adv_window; /* 上次收到包的建议数据大小 */
-	uint16_t my_adv_window; /* 本方的建议数据大小（每次checkdata时更新） */
+	uint32_t adv_window; /* 上次收到包的建议数据大小 */
+	uint32_t my_adv_window; /* 本方的建议数据大小（每次checkdata时更新） */
     size_t SWS; /* send_window_size窗口大小 */
 	size_t RWS; /* recv_window_size窗口大小 */
 	send_state stat;  /* 发送方所处的状态 */
@@ -85,6 +88,7 @@ typedef struct {
 	struct timeval TimeoutInterval;  /* 超时时间 */
 	struct timeval EstimatedRTT;  /* （加权）平均RTT时间 */
 	struct timeval DevRTT;  /* RTT偏差时间 */
+	FILE *log;
 } slide_window_t;
 
 /* 这个结构对于滑窗协议并不够用 */

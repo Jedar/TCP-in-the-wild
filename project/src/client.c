@@ -10,7 +10,7 @@
 void functionality(cmu_socket_t  * sock){
     char buf[9898];
     int read;
-    // FILE *fp;
+    FILE *fp;
     char *msg;
 
     msg = "client: hi there 1";
@@ -30,22 +30,21 @@ void functionality(cmu_socket_t  * sock){
 
     msg = "client: hi there 7";
     cmu_write(sock, msg, strlen(msg));
-    // cmu_write(sock, "hi there", 9);
+    cmu_write(sock, "hi there", 9);
     cmu_read(sock, buf, 200, NO_FLAG);
     printf("R: %s\n", buf);
 
     read = cmu_read(sock, buf, 200, NO_WAIT);
     printf("Read: %d\n", read);
 
-    // fp = fopen("./src/cmu_tcp.c", "rb");
-    // read = 1;
-    // while(read > 0 ){
-    //     read = fread(buf, 1, 2000, fp);
-    //     if(read > 0)
-    //         cmu_write(sock, buf, read);
-    // }
-    // msg = "";
-    // cmu_write(sock, msg, strlen(msg));
+    fp = fopen("./src/cmu_tcp.c", "rb");
+    read = 1;
+    while(read > 0 ){
+        read = fread(buf, 1, 2000, fp);
+        if(read > 0)
+            cmu_write(sock, buf, read);
+    }
+    fclose(fp);
 }
 
 /*

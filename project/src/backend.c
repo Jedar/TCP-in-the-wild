@@ -200,24 +200,32 @@ void* begin_backend(void * in){
 		pthread_exit(NULL); 
 		return NULL;
 	}
-	else{
-		printf("slide init success\n");
-	}
 	while(TRUE){
-		sleep(1);
+		sleep(2);
 		while(pthread_mutex_lock(&(dst->death_lock)) !=  0);
 		death = dst->dying;
 		pthread_mutex_unlock(&(dst->death_lock));
 		while(pthread_mutex_lock(&(dst->send_lock)) != 0);
 		/* 链接关闭则退出循环 */
-		if(death && dst->state == TCP_CLOSED)
+		if(death&&(dst->state == TCP_CLOSED)){
+			fprintf(dst->window.log,"exited....\n");
 			break;
-		/* 滑窗开始处理事务 */
-		slide_window_activate(&dst->window,dst);
+		}
+		if((dst->state == TCP_CLOSED)){
+			/* 通知上层可以读取数据,打破上层读取的循环 */
+    		pthread_cond_signal(&(dst->wait_cond));  
+			fprintf(dst->window.log,"exiting....\n");
+		}
+		else{
+			/* 滑窗开始处理事务 */
+			slide_window_activate(&dst->window,dst);
+		}
 		pthread_mutex_unlock(&(dst->send_lock));
 		/* 检查recv数据 */
 		slide_window_check_for_data(&dst->window,dst,NO_WAIT);
 	}
+	fprintf(dst->window.log,"slide closing....\n");
+	
 	slide_window_close(&(dst->window));
 	pthread_exit(NULL); 
 	

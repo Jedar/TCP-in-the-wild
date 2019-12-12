@@ -83,12 +83,12 @@ typedef struct {
 	recvQ_slot recv_buffer_header;  /* 缓存已收到的数据 */
     uint32_t dup_ack_num; /* 当前收到ack的数量 */
 	uint8_t timer_flag;  /* 滑窗的计时器是否设置 */
+	FILE *log;
 	/* 一下数据结构用于计算超时重传间隔 */
 	struct timeval time_send;  /* 发送包的时间 */
-	struct timeval TimeoutInterval;  /* 超时时间 */
-	struct timeval EstimatedRTT;  /* （加权）平均RTT时间 */
-	struct timeval DevRTT;  /* RTT偏差时间 */
-	FILE *log;
+	long TimeoutInterval;  /* 超时时间 */
+	long EstimatedRTT;  /* （加权）平均RTT时间 */
+	long DevRTT;  /* RTT偏差时间 */
 } slide_window_t;
 
 /* 这个结构对于滑窗协议并不够用 */

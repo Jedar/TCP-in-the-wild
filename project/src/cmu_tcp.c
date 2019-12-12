@@ -320,6 +320,7 @@ int cmu_read(cmu_socket_t * sock, char* dst, int length, int flags){
         /* 如果没有收到数据，释放锁，等待socket收到数据后继续加锁，这里会堵塞 */
         pthread_cond_wait(&(sock->wait_cond), &(sock->recv_lock)); 
         if(sock->state == TCP_CLOSED){
+          pthread_mutex_unlock(&(sock->recv_lock));
           return 0;
         }
       }

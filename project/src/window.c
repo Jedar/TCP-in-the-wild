@@ -7,6 +7,9 @@
 #include <unistd.h>
 
 #define RESEND_TIME 2
+/* 用于RTT计算 */
+#define ALPHA 0.125
+#define BETA 0.25
 
 static int deliver_data(cmu_socket_t *sock, char *pkt, int data_len);
 static void slide_window_handle_message(slide_window_t * win, cmu_socket_t *sock, char* pkt);
@@ -14,18 +17,21 @@ static void resend(slide_window_t * win);
 static void time_out(int sig, void *ptr);
 static void slide_window_resize(slide_window_t *win, int size);
 static void last_time_wait(int sig, void *ptr);
+static void adjust_rtt_value(slide_window_t *win);
 
 static SWPSeq min(SWPSeq x, SWPSeq y){
     return (x<y)?x:y;
 }
 
-/* 返回timeval数据结构对应的微妙值 */
-int get_timeval(struct timeval *time){
-    return (time->tv_sec*1000)+time->tv_usec;
+/* 返回timeval数据结构对应的微秒值 */
+long get_timeval(struct timeval *time){
+    return 1l*(time->tv_sec*1000000)+time->tv_usec;
 }
 
 /* 设置timeval的时间 */
-void set_timeval(struct timeval *time, unsigned int sec, unsigned int usec){
+void set_timeval(struct timeval *time, long interval){
+    long int sec = interval / 1000000;
+    long int usec = interval % 1000000;
     time->tv_sec = sec;
     time->tv_usec = usec;
 }
@@ -38,8 +44,8 @@ void set_timer(int sec, int usec, void (*handler)(int)){
     struct itimerval itv;
     itv.it_interval.tv_sec=0;//自动装载，之后每10秒响应一次
     itv.it_interval.tv_usec=0;
-    itv.it_value.tv_sec=5;//第一次定时的时间
-    itv.it_value.tv_usec=0;
+    itv.it_value.tv_sec=sec;//第一次定时的时间
+    itv.it_value.tv_usec=usec;
     setitimer(ITIMER_REAL,&itv,NULL);
 }
 
@@ -138,9 +144,10 @@ int slide_window_init(slide_window_t *win,
     win->stat = SS_DEFAULT;
     win->adv_window = get_window_size(WINDOW_INITIAL_ADVERTISED);
     win->my_adv_window = get_window_size(WINDOW_INITIAL_ADVERTISED);
+    win->TimeoutInterval = 1000000;
+    win->EstimatedRTT = 1000000;
+    win->DevRTT = 0;
     /* 设定初始RTT */
-    set_timeval(&win->TimeoutInterval,WINDOW_INITIAL_RTT/1000,WINDOW_INITIAL_RTT%1000);
-    set_timeval(&win->EstimatedRTT,WINDOW_INITIAL_RTT/1000,WINDOW_INITIAL_RTT%1000);
     win->recv_buffer_header.next = NULL;
     if(win->log == NULL){
         win->log = stdout;
@@ -189,7 +196,7 @@ void slide_window_activate(slide_window_t *win, cmu_socket_t *sock){
         free(sock->sending_buf);
 		sock->sending_buf = NULL;
     }
-    fprintf(win->log,"activate %d, %d(DATA), %d(LAR), %d(LFS)\n",sock->state,win->DAT,win->LAR,win->LFS);
+    // fprintf(win->log,"activate %d, %d(DATA), %d(LAR), %d(LFS)\n",sock->state,win->DAT,win->LAR,win->LFS);
 
     /* 有数据需要发送 */
     if(win->DAT > win->LAR){
@@ -248,7 +255,7 @@ void slide_window_send(slide_window_t *win, cmu_socket_t *sock){
         /* 不能再发送数据 */
         win->stat = SS_WAIT_ACK;
     }
-    fprintf(win->log,"SSTATE: %d,%d(SWS)\n",win->stat,win->SWS);
+    // fprintf(win->log,"SSTATE: %d,%d(SWS)\n",win->stat,win->SWS);
     /* 解除SIGALRM信号的堵塞 */
     sigprocmask(1 /* SIG_UNBLOCK */ ,&mask,NULL);
     switch(win->stat){
@@ -258,17 +265,17 @@ void slide_window_send(slide_window_t *win, cmu_socket_t *sock){
             buf_len = (buf_len <= MAX_DLEN)?buf_len:MAX_DLEN;
             /* 如果窗口大小过小 */
             /* adv_window_size 使用错误 */
-            if(win->adv_window < MAX_DLEN){
-                buf_len = (buf_len <= win->adv_window)?buf_len:win->adv_window;
-                if(win->adv_window == 0){
-                    buf_len = 1;
-                }
-            }
-            fprintf(win->log,"window sz %d, buf len %d\n",win->adv_window, buf_len);
+            // if(win->adv_window < MAX_DLEN){
+            //     buf_len = (buf_len <= win->adv_window)?buf_len:win->adv_window;
+            //     if(win->adv_window == 0){
+            //         buf_len = 1;
+            //     }
+            // }
+            // fprintf(win->log,"window sz %d, buf len %d\n",win->adv_window, buf_len);
             plen = DEFAULT_HEADER_LEN + buf_len;
             data = (char *)malloc(buf_len);
             copy_string_from_buffer(win,win->LFS,data,buf_len);
-            fprintf(win->log,"send msg: %s\nseq%d,ack%d,buf_len%d\n",data,mkpkt_seq,ack,buf_len);
+            // fprintf(win->log,"send msg: %s\nseq%d,ack%d,buf_len%d\n",data,mkpkt_seq,ack,buf_len);
             mkpkt_seq = (win->last_ack_received + (win->LFS - win->LAR))%MAX_SEQ_NUM;
             msg = create_packet_buf(sock->my_port, sock->their_port, 
                 mkpkt_seq, ack, 
@@ -284,7 +291,7 @@ void slide_window_send(slide_window_t *win, cmu_socket_t *sock){
             data = NULL;
             /* 如果没有设置计时器，设置时钟 */
             if(!win->timer_flag){
-                set_timer(RESEND_TIME,0,(void (*)(int))time_out);
+                set_timer(win->TimeoutInterval/1000000,win->TimeoutInterval%1000000,(void (*)(int))time_out);
                 win->timer_flag = 1;
                 /* 设置发送时间 */
                 gettimeofday(&win->time_send,NULL);
@@ -299,12 +306,12 @@ void slide_window_send(slide_window_t *win, cmu_socket_t *sock){
                 /* 如果包太长,分多次发送,每次只发送最大包长 */
                 buf_len = (buf_len <= MAX_DLEN)?buf_len:MAX_DLEN;
                 /* 如果窗口大小过小 */
-                if(win->adv_window < MAX_DLEN){
-                    buf_len = (buf_len <= win->adv_window)?buf_len:win->adv_window;
-                    if(win->adv_window == 0){
-                        buf_len = 1;
-                    }
-                }
+                // if(win->adv_window < MAX_DLEN){
+                //     buf_len = (buf_len <= win->adv_window)?buf_len:win->adv_window;
+                //     if(win->adv_window == 0){
+                //         buf_len = 1;
+                //     }
+                // }
                 plen = DEFAULT_HEADER_LEN + buf_len;
                 data = (char *)malloc(buf_len);
                 copy_string_from_buffer(win,win->LAR,data,buf_len);
@@ -320,7 +327,7 @@ void slide_window_send(slide_window_t *win, cmu_socket_t *sock){
                 msg = NULL;
                 data = NULL;
                 unset_timer();
-                set_timer(RESEND_TIME,0,(void (*)(int))time_out);
+                set_timer(win->TimeoutInterval/1000000,win->TimeoutInterval%1000000,(void (*)(int))time_out);
                 win->timer_flag = 1;
                 /* 设置发送时间 */
                 gettimeofday(&win->time_send,NULL);
@@ -334,12 +341,12 @@ void slide_window_send(slide_window_t *win, cmu_socket_t *sock){
                 buf_len = (buf_len <= MAX_DLEN)?buf_len:MAX_DLEN;
                 buf_len = (buf_len <= MAX_DLEN)?buf_len:MAX_DLEN;
                 /* 如果窗口大小过小 */
-                if(win->adv_window < MAX_DLEN){
-                    buf_len = (buf_len <= win->adv_window)?buf_len:win->adv_window;
-                    if(win->adv_window == 0){
-                        buf_len = 1;
-                    }
-                }
+                // if(win->adv_window < MAX_DLEN){
+                //     buf_len = (buf_len <= win->adv_window)?buf_len:win->adv_window;
+                //     if(win->adv_window == 0){
+                //         buf_len = 1;
+                //     }
+                // }
                 /* 重新打包 */
                 plen = DEFAULT_HEADER_LEN + buf_len;
                 data = (char *)malloc(buf_len);
@@ -356,7 +363,7 @@ void slide_window_send(slide_window_t *win, cmu_socket_t *sock){
                 msg = NULL;
                 data = NULL;
                 unset_timer();
-                set_timer(RESEND_TIME,0,(void (*)(int))time_out);
+                set_timer(win->TimeoutInterval/1000000,win->TimeoutInterval%1000000,(void (*)(int))time_out);
                 win->timer_flag = 1;
                 /* 设置发送时间 */
                 gettimeofday(&win->time_send,NULL);
@@ -390,7 +397,7 @@ static int deliver_data(cmu_socket_t *sock, char *pkt, int data_len){
 
 /* 处理数据 */
 static void slide_window_handle_message(slide_window_t * win, cmu_socket_t *sock, char* pkt){
-    fprintf(win->log,"handle: [%d(lack),%d(lseq)]\n",win->last_ack_received,win->last_seq_received);
+    // fprintf(win->log,"handle: [%d(lack),%d(lseq)]\n",win->last_ack_received,win->last_seq_received);
     fflush(win->log);
     char* rsp;
 	/* 标志位 */
@@ -403,7 +410,7 @@ static void slide_window_handle_message(slide_window_t * win, cmu_socket_t *sock
     /* 收到ACK后查看缓存的引用 */
     recvQ_slot *slot;
     recvQ_slot *prev;
-    fprintf(win->log,"handle: [%d(ack),%d(seq),%d(adv)]\n",ack,seq,adv_win);
+    // fprintf(win->log,"handle: [%d(ack),%d(seq),%d(adv)]\n",ack,seq,adv_win);
     int buf_len;
 	switch(flags){
 		case ACK_FLAG_MASK: /* 处理发送者接收到ACK */
@@ -437,7 +444,7 @@ static void slide_window_handle_message(slide_window_t * win, cmu_socket_t *sock
                 }
                 /* 这里为什么变成0了 */
                 win->adv_window = get_advertised_window(pkt);
-                fprintf(win->log,"adjust window size %d\n",win->adv_window);
+                // fprintf(win->log,"adjust window size %d\n",win->adv_window);
                 /* 由于累计确认机制，滑窗后移到累计接收的位置 */
                 win->LAR += buf_len;
                 /* 提醒发送者可以发送了 */
@@ -446,9 +453,10 @@ static void slide_window_handle_message(slide_window_t * win, cmu_socket_t *sock
                 unset_timer();
                 /* 缓存中还有包没接收 */
                 if(win->LAR < win->LFS){
-                    set_timer(RESEND_TIME,0,(void (*)(int))time_out);
+                    set_timer(win->TimeoutInterval/1000000,win->TimeoutInterval%1000000,(void (*)(int))time_out);
                     win->timer_flag = 1;
                 }
+                adjust_rtt_value(win);
                 /* 重置dup ack num */
                 win->dup_ack_num = 0;
                 /* RTT的计算写在这里 */
@@ -472,7 +480,7 @@ static void slide_window_handle_message(slide_window_t * win, cmu_socket_t *sock
             sock->window.last_seq_received++;
             rsp = create_packet_buf(sock->my_port, sock->their_port, 
                 sock->window.last_ack_received,
-                        sock->window.last_seq_received, 
+                sock->window.last_seq_received, 
                 DEFAULT_HEADER_LEN, DEFAULT_HEADER_LEN, ACK_FLAG_MASK,
                         /*TODO*/win->my_adv_window, 0, NULL, NULL, 0);
             sendto(sock->socket, rsp, DEFAULT_HEADER_LEN, 0, 
@@ -502,7 +510,7 @@ static void slide_window_handle_message(slide_window_t * win, cmu_socket_t *sock
             pthread_cond_signal(&(sock->wait_cond));  
             sock->state = TCP_TIME_WAIT;
             /* 启动TIME WAIT */
-            set_timer(RESEND_TIME,0,(void (*)(int))last_time_wait);
+            set_timer(win->TimeoutInterval/1000000,win->TimeoutInterval%1000000,(void (*)(int))last_time_wait);
             fprintf(win->log,"########recv FIN and ACK########\n");
             break;
         } 
@@ -514,7 +522,8 @@ static void slide_window_handle_message(slide_window_t * win, cmu_socket_t *sock
                 if(win->last_ack_received < ack){
                     win->last_ack_received = ack; /* 设置为新值 */
                 }
-                win->adv_window = get_advertised_window(pkt);
+                /* 收到数据应该不要修改窗口大小 */
+                // win->adv_window = get_advertised_window(pkt);
                 data_len = get_plen(pkt) - DEFAULT_HEADER_LEN;
                 adv_win = deliver_data(sock,pkt,data_len);
                 win->last_seq_received = seq;
@@ -542,6 +551,7 @@ static void slide_window_handle_message(slide_window_t * win, cmu_socket_t *sock
                 sendto(sock->socket, rsp, DEFAULT_HEADER_LEN, 0, (struct sockaddr*) 
                     &(sock->conn), conn_len);
                 free(rsp);
+                
                 /* 通知上层可以读取数据 */
                 pthread_cond_signal(&(sock->wait_cond));  
             }
@@ -572,7 +582,7 @@ static void resend(slide_window_t * win){
 /* 与backend的check类似，但是只判断是否有数据到达并不读取数据 */
 /* 返回值为收到数据的长度 */
 void slide_window_check_for_data(slide_window_t * win, cmu_socket_t *sock, int flags){
-    fprintf(stdout,"check for data %d(my win) %d(exp win)\n",win->my_adv_window,win->adv_window);
+    // fprintf(stdout,"check for data %d(my win) %d(exp win)\n",win->my_adv_window,win->adv_window);
     char hdr[DEFAULT_HEADER_LEN];
 	socklen_t conn_len = sizeof(sock->conn);
 	ssize_t len = 0;
@@ -627,6 +637,22 @@ void slide_window_check_for_data(slide_window_t * win, cmu_socket_t *sock, int f
 
 static void slide_window_resize(slide_window_t *win, int size){
 
+}
+
+static void adjust_rtt_value(slide_window_t *win){
+    /* 获取当前时间 */
+    printf("[%d(estRTT),%d(devRTT),%d(interval)\n",win->EstimatedRTT/1000,
+        win->DevRTT/1000,win->TimeoutInterval/1000);
+    struct timeval tim;
+    gettimeofday(&tim,NULL);
+    long t1 = get_timeval(&tim);
+    long t2 = get_timeval(&win->time_send);
+    long sampleRTT = t1 - t2;
+    win->EstimatedRTT= (long)(((float)(1-ALPHA))*win->EstimatedRTT + ALPHA*sampleRTT);
+    win->DevRTT = (long)((1-BETA)*win->DevRTT + BETA*abs(sampleRTT-win->EstimatedRTT));
+    win->TimeoutInterval = win->EstimatedRTT + 4*win->DevRTT;
+    printf("[%d(estRTT),%d(samRTT),%d(devRTT),%d(interval)\n",win->EstimatedRTT/1000,
+        sampleRTT/1000,win->DevRTT/1000,win->TimeoutInterval/1000);
 }
 
 /* 关闭滑窗 */

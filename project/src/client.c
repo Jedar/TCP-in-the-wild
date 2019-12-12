@@ -13,29 +13,29 @@ void functionality(cmu_socket_t  * sock){
     FILE *fp;
     char *msg;
 
-    msg = "client: hi there 1";
-    cmu_write(sock, msg, strlen(msg));
-    sleep(1);
-    msg = "client: hi there 2";
-    cmu_write(sock, msg, strlen(msg));
-    msg = "client: hi there 3";
-    cmu_write(sock, msg, strlen(msg));
-    msg = "client: hi there 4";
-    cmu_write(sock, msg, strlen(msg));
-    msg = "client: hi there 5";
-    cmu_write(sock, msg, strlen(msg));
-    msg = "client: hi there 6";
-    cmu_write(sock, msg, strlen(msg));
-    cmu_read(sock, buf, 200, NO_FLAG);
+    // msg = "client: hi there 1";
+    // cmu_write(sock, msg, strlen(msg));
+    // sleep(1);
+    // msg = "client: hi there 2";
+    // cmu_write(sock, msg, strlen(msg));
+    // msg = "client: hi there 3";
+    // cmu_write(sock, msg, strlen(msg));
+    // msg = "client: hi there 4";
+    // cmu_write(sock, msg, strlen(msg));
+    // msg = "client: hi there 5";
+    // cmu_write(sock, msg, strlen(msg));
+    // msg = "client: hi there 6";
+    // cmu_write(sock, msg, strlen(msg));
+    // cmu_read(sock, buf, 200, NO_FLAG);
 
-    msg = "client: hi there 7";
-    cmu_write(sock, msg, strlen(msg));
-    cmu_write(sock, "hi there", 9);
-    cmu_read(sock, buf, 200, NO_FLAG);
-    printf("R: %s\n", buf);
+    // msg = "client: hi there 7";
+    // cmu_write(sock, msg, strlen(msg));
+    // cmu_write(sock, "hi there", 9);
+    // cmu_read(sock, buf, 200, NO_FLAG);
+    // printf("R: %s\n", buf);
 
-    read = cmu_read(sock, buf, 200, NO_WAIT);
-    printf("Read: %d\n", read);
+    // read = cmu_read(sock, buf, 200, NO_WAIT);
+    // printf("Read: %d\n", read);
 
     fp = fopen("./src/cmu_tcp.c", "rb");
     read = 1;

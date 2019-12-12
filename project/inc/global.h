@@ -31,7 +31,7 @@
 
 #define MAX_SEQ_NUM (1<<31)
 
-#define MAX_RECV_SIZE 10000
+#define MAX_RECV_SIZE 1376   //10000
 
 typedef enum {
 	TCP_CLOSED = 1,
@@ -57,7 +57,7 @@ typedef enum {
 } send_state;
 
 /* 滑窗的下标 */
-typedef uint32_t SWPSeq;  /* slide window protocol序列号 */
+typedef int SWPSeq;  /* slide window protocol序列号 */
 
 /* 滑窗接收窗口单位 */
 typedef struct RecvQ_slot {
@@ -86,6 +86,7 @@ typedef struct {
 	FILE *log;
 	/* 一下数据结构用于计算超时重传间隔 */
 	struct timeval time_send;  /* 发送包的时间 */
+	SWPSeq send_seq;
 	long TimeoutInterval;  /* 超时时间 */
 	long EstimatedRTT;  /* （加权）平均RTT时间 */
 	long DevRTT;  /* RTT偏差时间 */

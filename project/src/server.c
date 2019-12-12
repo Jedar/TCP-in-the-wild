@@ -13,18 +13,18 @@ void functionality(cmu_socket_t  * sock){
     int n;
     char *msg;
 
-    n = cmu_read(sock, buf, 200, NO_FLAG);
-    printf("R: %s\n", buf);
-    printf("N: %d\n", n);
-    msg = "server: hi there 1";
-    cmu_write(sock, msg, strlen(msg));
+    // n = cmu_read(sock, buf, 200, NO_FLAG);
+    // printf("R: %s\n", buf);
+    // printf("N: %d\n", n);
+    // msg = "server: hi there 1";
+    // cmu_write(sock, msg, strlen(msg));
 
-    sleep(1);
-    cmu_read(sock, buf, 200, NO_FLAG);
-    msg = "server: hi there 2";
-    cmu_write(sock, msg, strlen(msg));
+    // sleep(1);
+    // cmu_read(sock, buf, 200, NO_FLAG);
+    // msg = "server: hi there 2";
+    // cmu_write(sock, msg, strlen(msg));
 
-    sleep(5);
+    // sleep(5);
     fp = fopen("./test/file.c", "w+");
     while(n = cmu_read(sock, buf, 9898, NO_FLAG)){
         printf("N: %d\n", n);

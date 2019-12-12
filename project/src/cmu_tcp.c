@@ -28,9 +28,11 @@ int TCP_handshake_client(cmu_socket_t *sock){
 			if ((get_flags(header)) == (SYN_FLAG_MASK|ACK_FLAG_MASK)) {
 				ack = get_seq(header) + 1;
         seq = get_ack(header);
+        sock->window.adv_window = get_advertised_window(header);
+        /* 发送中包含本端的接收窗口大小 */
 				packet = create_packet_buf(sock->my_port, sock->their_port,seq,
 					ack, DEFAULT_HEADER_LEN, DEFAULT_HEADER_LEN,ACK_FLAG_MASK/* 返回ACK */,
-					/*TODO*/0, 0, NULL, NULL, 0);
+					MAX_RECV_SIZE, 0, NULL, NULL, 0);
 				sendto(sock->socket, packet, DEFAULT_HEADER_LEN, 0, 
             (struct sockaddr*) &(sock->conn), sizeof(sock->conn));
         free(packet);
@@ -69,7 +71,7 @@ int TCP_handshake_server(cmu_socket_t *sock){
         /* 这里修改为了SYN而不是SYN|ACK */
 				packet = create_packet_buf(sock->my_port, sock->their_port, seq,
 					  ack, DEFAULT_HEADER_LEN, DEFAULT_HEADER_LEN, (SYN_FLAG_MASK|ACK_FLAG_MASK),
-					/*TODO*/0, 0, NULL, NULL, 0);
+					MAX_RECV_SIZE, 0, NULL, NULL, 0);
 				sendto(sock->socket, packet, DEFAULT_HEADER_LEN, 0, 
             (struct sockaddr*) &(sock->conn), sizeof(sock->conn));
         free(packet);
@@ -85,6 +87,7 @@ int TCP_handshake_server(cmu_socket_t *sock){
       int flag = ((get_flags(header) & ACK_FLAG_MASK) == ACK_FLAG_MASK);
       uint32_t ack = get_seq(header);
       uint32_t seq = get_ack(header);
+      sock->window.adv_window = get_advertised_window(header);
       if(flag && ack == sock->window.last_ack_received && seq == sock->window.last_seq_received+1){
         sock->state = TCP_ESTABLISHED;
         sock->window.last_ack_received = ack;
@@ -235,6 +238,8 @@ int cmu_socket(cmu_socket_t * dst, int flag, int port, char * serverIP){
     return EXIT_FAILURE;
   }
 
+  printf("advertise window size: %d\n",dst->window.adv_window);
+
   /* 调用backend.c开始处理后端数据 */
   pthread_create(&(dst->thread_id), NULL, begin_backend, (void *)dst);  
   return EXIT_SUCCESS;
@@ -352,6 +357,7 @@ int cmu_read(cmu_socket_t * sock, char* dst, int length, int flags){
       perror("ERROR Unknown flag.\n");
       read_len = EXIT_ERROR;
   }
+  sock->window.my_adv_window = MAX_RECV_SIZE - sock->received_len;
   pthread_mutex_unlock(&(sock->recv_lock));
   /* 返回读取长度 */
   return read_len;

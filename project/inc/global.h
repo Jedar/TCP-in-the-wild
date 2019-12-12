@@ -31,7 +31,7 @@
 
 #define MAX_SEQ_NUM (1<<31)
 
-#define MAX_RECV_SIZE 1376   //10000
+#define MAX_RECV_SIZE 10000   //10000
 
 typedef enum {
 	TCP_CLOSED = 1,
@@ -55,6 +55,12 @@ typedef enum {
 	SS_SEND_OVER = 4,  /* 当前数据发送完毕 */
 	SS_WAIT_ACK = 6  /* 窗口满了，需要等待ACK */
 } send_state;
+
+typedef enum {
+	SLOW_START = 0, 
+	CONGESTION_AVOIDANCE = 1, 
+	FAST_RECOVERY = 2 
+} CongestionState;
 
 /* 滑窗的下标 */
 typedef int SWPSeq;  /* slide window protocol序列号 */
@@ -90,6 +96,9 @@ typedef struct {
 	long TimeoutInterval;  /* 超时时间 */
 	long EstimatedRTT;  /* （加权）平均RTT时间 */
 	long DevRTT;  /* RTT偏差时间 */
+	uint32_t CWND; /* 拥塞窗口大小,单位是字节数 */
+	uint32_t Ssthresh; /* 慢启动阈值，单位是字节数 */
+	CongestionState congestionState;
 } slide_window_t;
 
 /* 这个结构对于滑窗协议并不够用 */

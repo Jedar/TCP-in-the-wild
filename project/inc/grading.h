@@ -26,5 +26,4 @@
 //Max TCP Buffer 这个字段用于流量控制
 #define MAX_NETWORK_BUFFER 65536 // 2^16 bytes
 
-
 #endif

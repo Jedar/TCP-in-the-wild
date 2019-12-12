@@ -31,8 +31,6 @@ void functionality(cmu_socket_t  * sock){
         fwrite(buf, 1, n, fp);
         fflush(fp);
     }
-    printf("N: %d\n", n);
-    printf("!!!!Exit reading\n", n);
     fclose(fp);
 }
 

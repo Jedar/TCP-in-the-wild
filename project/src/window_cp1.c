@@ -85,17 +85,6 @@ static void time_out(int sig, void *ptr){
     }
     /* 正常的信号处理 */
     else{
-        switch(win->congestionState){
-            case SLOW_START:
-            case CONGESTION_AVOIDANCE:
-            case FAST_RECOVERY:
-                win->Ssthresh = win->CWND / 2;
-                win->CWND = MAX_DLEN;
-                win->dup_ack_num = 0;
-                win->congestionState = SLOW_START;
-                win->stat = SS_TIME_OUT;
-                break;
-        }
         win->timer_flag = 0;
         win->stat = SS_TIME_OUT;
         fprintf(stdout,"-------time out------------\n");
@@ -161,10 +150,6 @@ int slide_window_init(slide_window_t *win,
     win->send_seq = -1;
     /* 设定初始RTT */
     win->recv_buffer_header.next = NULL;
-    /* 初始化拥塞控制变量 */
-    win->CWND = WINDOW_INITIAL_WINDOW_SIZE*(MAX_DLEN);
-    win->Ssthresh = (WINDOW_INITIAL_SSTHRESH)*1024;
-    win->congestionState = SLOW_START;
     if(win->log == NULL){
         win->log = stdout;
     }
@@ -219,17 +204,13 @@ static int copy_string_from_buffer(slide_window_t *win, SWPSeq idx, char *data, 
 void slide_window_activate(slide_window_t *win, cmu_socket_t *sock){
     /* 检查缓冲区是否有数据，如果有数据转移至发送窗口内 */
     int buf_len = sock->sending_len;
+    // fprintf(win->log,"activate %d, %d(DATA), %d(LAR), %d(LFS)\n",sock->state,win->DAT,win->LAR,win->LFS);
+    fflush(win->log);
     if(buf_len > 0 && (win->DAT == win->LAR)){
         copy_string_to_buffer(win,sock);
     }
-    // fprintf(win->log,"activate %d, %d(DATA), %d(LAR), %d(LFS)\n",sock->state,win->DAT,win->LAR,win->LFS);
-
-    /* --------拥塞控制------- */
-    if(win->CWND >= win->Ssthresh){
-        win->congestionState = CONGESTION_AVOIDANCE;
-    }
-    /* ------------------------ */
-
+    // fprintf(win->log,"123activate %d, %d(DATA), %d(LAR), %d(LFS)\n",sock->state,win->DAT,win->LAR,win->LFS);
+    fflush(win->log);
     /* 有数据需要发送 */
     if(win->DAT > win->LAR){
         slide_window_send(win,sock);
@@ -248,6 +229,7 @@ void slide_window_activate(slide_window_t *win, cmu_socket_t *sock){
 }
 
 void slide_window_send(slide_window_t *win, cmu_socket_t *sock){
+    // sleep(1);
     // fprintf(stdout,"# send ready\n");
     /* 如果状态不对不让发数据 */
     // if((sock->state != TCP_ESTABLISHED) && (sock->state != TCP_CLOSE_WAIT)){
@@ -280,13 +262,11 @@ void slide_window_send(slide_window_t *win, cmu_socket_t *sock){
     /* 如果数据已经全部发送了，等待ACK或者超时 */
     if((win->DAT == win->LFS)&&(win->stat == SS_DEFAULT)){
         win->stat = SS_SEND_OVER;
-        // sleep(1);
-    }
-    if((win->LFS + MAX_DLEN - win->LAR > (int)win->CWND)&&win->stat == SS_DEFAULT){
-        /* 不能再发送数据 */
-        win->stat = SS_WAIT_ACK;
+        sleep(1);
     }
     /* 检查接收窗口是否满了 */
+    // printf("LFS:%d, LAR:%d, adv_win:%d\n",win->LFS,win->LAR,win->adv_window);
+    // printf("flag: %d\n",win->LFS - win->LAR - MAX_DLEN);
     if((win->LFS + MAX_DLEN - win->LAR > (int)win->adv_window)&&win->stat == SS_DEFAULT){
         if(win->adv_window == 0){
             adv_len = 1;
@@ -299,6 +279,7 @@ void slide_window_send(slide_window_t *win, cmu_socket_t *sock){
             win->stat = SS_WAIT_ACK;
         }
     }
+    // printf("123LFS:%d, LAR:%d, adv_win:%d, state:%d\n",win->LFS,win->LAR,win->adv_window,win->stat);
     // fprintf(win->log,"SSTATE: %d,%d(SWS)\n",win->stat,win->SWS);
     /* 解除SIGALRM信号的堵塞 */
     switch(win->stat){
@@ -319,7 +300,7 @@ void slide_window_send(slide_window_t *win, cmu_socket_t *sock){
             
             /* 发送UDP的包 */
             sendto(sock->socket, msg, plen, 0, (struct sockaddr*) &(sock->conn), conn_len);
-            printf("send packet size: %d\n",buf_len);
+            // printf("send packet size: %d\n",buf_len);
             /* 注意，如果是特别小的包的话采用停等协议 */
             free(msg);
             free(data);
@@ -410,6 +391,7 @@ void slide_window_send(slide_window_t *win, cmu_socket_t *sock){
             break;
     }
     sigprocmask(1 /* SIG_UNBLOCK */ ,&mask,NULL);
+    // printf("slide window send over\n");
 }
 
 /* 向上层发送数据，调用前需要确保上锁,返回recvBuffer剩余的大小 */
@@ -491,53 +473,15 @@ static void slide_window_handle_message(slide_window_t * win, cmu_socket_t *sock
                 if(ack == win->send_seq){
                     adjust_rtt_value(win);
                 }
-                /* --------拥塞控制------- */
-                switch(win->congestionState){
-                    case SLOW_START:
-                        /* 重置dup ack num */
-                        win->CWND += MAX_DLEN;
-                        win->dup_ack_num = 0;
-                        break;
-                    case CONGESTION_AVOIDANCE:
-                        win->CWND += (uint32_t)(MAX_DLEN*(1.0*MAX_DLEN/win->CWND));
-                        win->dup_ack_num = 0;
-                        break;
-                    case FAST_RECOVERY:
-                        win->CWND = win->Ssthresh;
-                        win->dup_ack_num = 0;
-                        win->congestionState = CONGESTION_AVOIDANCE;
-                        break;
-                }
-                
-                /* ------------------------ */
-                
+                /* 重置dup ack num */
+                win->dup_ack_num = 0;
+                /* RTT的计算写在这里 */
             }
             else{  /* 收到错序的ACK */
                 // fprintf(stdout,"Disorder ack\n");
-                switch(win->congestionState){
-                    case SLOW_START:
-                        win->dup_ack_num++; 
-                        break;
-                    case CONGESTION_AVOIDANCE:
-                        win->dup_ack_num++; 
-                        break;
-                    case FAST_RECOVERY:
-                        win->CWND += MAX_DLEN; 
-                        win->stat = SS_DEFAULT;
-                        break;
-                }
+                win->dup_ack_num++;
                 if(win->dup_ack_num == 3){
-                    switch(win->congestionState){
-                        case SLOW_START:
-                        case CONGESTION_AVOIDANCE:
-                            win->Ssthresh = win->CWND/2;
-                            win->CWND = win->Ssthresh + 3*MAX_DLEN;
-                            win->congestionState = FAST_RECOVERY;
-                            resend(win);
-                            break;
-                        case FAST_RECOVERY:
-                            break;
-                    }
+                    resend(win);
                     win->dup_ack_num = 0;
                 }
             }
@@ -648,11 +592,12 @@ static void slide_window_handle_message(slide_window_t * win, cmu_socket_t *sock
             }
 			break;
 	}
+    // printf("handle message over\n");
 }
 
 static void resend(slide_window_t * win){
     win->stat = SS_RESEND;
-    fprintf(win->log,"resending.......done\n");
+    // fprintf(win->log,"resending.......done\n");
 }
 
 /* 与backend的check类似，但是只判断是否有数据到达并不读取数据 */

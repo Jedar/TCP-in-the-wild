@@ -254,8 +254,16 @@ int cmu_socket(cmu_socket_t * dst, int flag, int port, char * serverIP){
  *
  */
 int cmu_close(cmu_socket_t * sock){
-  while ((sock->window.DAT != sock->window.LAR) || (sock->sending_len != 0)){
-    sleep(0);
+  while (1){
+    while(pthread_mutex_lock(&(sock->send_lock)) != 0);
+    if(((sock->window.DAT == sock->window.LAR) && (sock->sending_len == 0))){
+      // printf("closing: DAT: %d, LAR: %d, len: %d\n",sock->window.DAT,sock->window.LAR,sock->sending_len);
+      pthread_mutex_unlock(&(sock->send_lock));
+      break;
+    }
+    // printf("close: DAT: %d, LAR: %d, len: %d\n",sock->window.DAT,sock->window.LAR,sock->sending_len);
+    pthread_mutex_unlock(&(sock->send_lock));
+    sleep(1);
   }
   /* 连接关闭 */
   while(pthread_mutex_lock(&(sock->death_lock)) != 0);

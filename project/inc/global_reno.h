@@ -78,11 +78,13 @@ typedef struct {
 	uint32_t last_ack_received; /* 上一个ack序列 */
 	uint32_t adv_window; /* 上次收到包的建议数据大小 */
 	uint32_t my_adv_window; /* 本方的建议数据大小（每次checkdata时更新） */
+    size_t SWS; /* send_window_size窗口大小 */
+	size_t RWS; /* recv_window_size窗口大小 */
 	send_state stat;  /* 发送方所处的状态 */
 	SWPSeq LAR; /* last ack recv */ /* |----------LAR+++++++++LFS--------| */
 	SWPSeq LFS; /* last byte send */
 	SWPSeq DAT; /* 数据的最大下标 */
-	char send_buffer[MAX_BUFFER_SIZE+1];  /* 发送者缓冲 */
+	char send_buffer[MAX_BUFFER_SIZE];  /* 发送者缓冲 */
 	uint32_t seq_expect;  /* 接收下一个包的seq序列 */
 	recvQ_slot recv_buffer_header;  /* 缓存已收到的数据 */
     uint32_t dup_ack_num; /* 当前收到ack的数量 */

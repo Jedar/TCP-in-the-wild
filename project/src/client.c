@@ -37,7 +37,7 @@ void functionality(cmu_socket_t  * sock){
     // read = cmu_read(sock, buf, 200, NO_WAIT);
     // printf("Read: %d\n", read);
 
-    fp = fopen("./src/cmu_tcp.c", "rb");
+    fp = fopen("./test/C#.pdf", "rb");
     read = 1;
     while(read > 0 ){
         read = fread(buf, 1, 2000, fp);
@@ -74,6 +74,11 @@ int main(int argc, char **argv) {
     }
     portno = (unsigned short)atoi(serverport);
 
+    struct timeval time;
+    long t1,t2;
+
+    gettimeofday(&time,NULL);
+    t1 = time.tv_sec;
 
     if(cmu_socket(&socket, TCP_INITATOR, portno, serverip) < 0)
         exit(EXIT_FAILURE);
@@ -82,5 +87,12 @@ int main(int argc, char **argv) {
 
     if(cmu_close(&socket) < 0)
         exit(EXIT_FAILURE);
+
+    gettimeofday(&time,NULL);
+    t2 = time.tv_sec;
+
+    fprintf(stderr,"time spend: %ld, = %ld(mins)",(t2-t1),(t2-t1)/60);
+    fflush(stdout);
+    
     return EXIT_SUCCESS;
 }

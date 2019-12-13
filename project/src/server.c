@@ -1,4 +1,6 @@
 #include "cmu_tcp.h"
+#include <time.h>
+#include <sys/time.h>
 
 /*
  * Param: sock - used for reading and writing to a connection
@@ -25,7 +27,7 @@ void functionality(cmu_socket_t  * sock){
     // cmu_write(sock, msg, strlen(msg));
 
     // sleep(5);
-    fp = fopen("./test/file.c", "w+");
+    fp = fopen("./test/file.pdf", "w+");
     while(n = cmu_read(sock, buf, 9898, NO_FLAG)){
         printf("N: %d\n", n);
         fwrite(buf, 1, n, fp);
